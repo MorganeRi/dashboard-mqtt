@@ -9,20 +9,30 @@ const io = new Server(server);
 
 app.use(express.static('public'));
 
-const mqttClient = mqtt.connect('mqtt://localhost');  // si Mosquitto tourne en local
+const mqttClient = mqtt.connect('mqtt://localhost'); // Adapte si Mosquitto est distant
 
 mqttClient.on('connect', () => {
-  console.log('MQTT connecté');
+  console.log('✅ MQTT connecté');
   mqttClient.subscribe('monitor/control/EnvQuery/Answer');
   mqttClient.subscribe('monitor/warnings/all');
 });
 
 mqttClient.on('message', (topic, message) => {
   const payload = message.toString();
-  console.log(`Message reçu sur ${topic} : ${payload}`);
+  console.log(`📨 ${topic} : ${payload}`);
   io.emit('mqttMessage', { topic, payload });
 });
 
+io.on('connection', (socket) => {
+  console.log('🔌 Client Socket.IO connecté');
+
+  socket.on('manualEntry', (payload) => {
+    const topic = 'monitor/control/EnvQuery/Manual';
+    mqttClient.publish(topic, payload);
+    console.log(`📤 Données manuelles publiées sur ${topic} : ${payload}`);
+  });
+});
+
 server.listen(3000, () => {
-  console.log('Dashboard dispo sur http://localhost:3000');
+  console.log('🌐 Interface disponible sur http://localhost:3000');
 });

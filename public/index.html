@@ -1,100 +1,151 @@
 <!DOCTYPE html>
 <html lang="fr">
-
 <head>
-    <meta charset="UTF-8">
-    <title>Dashboard Température</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/socket.io/socket.io.js"></script>
-    <style>
-        canvas {
-            max-width: 600px;
-            margin: 20px auto;
-            display: block;
-        }
+  <meta charset="UTF-8" />
+  <title>Dashboard Température</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    body {
+      font-family: sans-serif;
+      padding: 20px;
+      text-align: center;
+    }
 
-        #alerts {
-            color: red;
-            text-align: center;
-            font-size: 1.2em;
-        }
-    </style>
+    canvas {
+      max-width: 700px;
+      margin: auto;
+      display: block;
+    }
+
+    #alerts {
+      color: red;
+      margin-top: 20px;
+      font-size: 1.2em;
+    }
+
+    form {
+      margin-top: 30px;
+    }
+
+    input {
+      padding: 5px;
+      margin: 5px;
+    }
+
+    button {
+      padding: 8px 16px;
+      margin-top: 10px;
+    }
+  </style>
 </head>
-
 <body>
-    <h1 style="text-align:center;">Interface MQTT</h1>
-    <canvas id="tempChart"></canvas>
-    <div id="alerts"></div>
-    <script>
-        const ctx = document.getElementById('tempChart').getContext('2d');
-        const labels = [];
+  <h1>Interface MQTT - Température & Humidité</h1>
+  <canvas id="tempChart"></canvas>
+  <div id="alerts"></div>
 
-        const data = {
-            labels: labels,
-            datasets: [
-                {
-                    label: 'Température (°C)',
-                    data: [],
-                    borderWidth: 2,
-                    fill: false,
-                    tension: 0.3,
-                    borderColor: 'red'
-                },
-                {
-                    label: 'Humidité (%)',
-                    data: [],
-                    borderWidth: 2,
-                    fill: false,
-                    tension: 0.3,
-                    borderColor: 'blue'
-                }
-            ]
-        };
+  <form id="manualForm">
+    <h2>Saisir les données manuellement</h2>
+    <input type="number" id="manualTemp" step="0.01" placeholder="Température (°C)" required />
+    <input type="number" id="manualHumid" step="0.01" placeholder="Humidité (%)" required />
+    <button type="submit">Envoyer</button>
+  </form>
 
-        const tempChart = new Chart(ctx, {
-            type: 'line',
-            data: data,
-            options: {
-                scales: {
-                    y: { beginAtZero: true }
-                }
-            }
-        });
+  <script>
+    const ctx = document.getElementById('tempChart').getContext('2d');
+    const labels = [];
 
-        const socket = io();
+    const data = {
+      labels: labels,
+      datasets: [
+        {
+          label: 'Température (°C)',
+          data: [],
+          borderWidth: 2,
+          fill: false,
+          tension: 0.3,
+          borderColor: 'red'
+        },
+        {
+          label: 'Humidité (%)',
+          data: [],
+          borderWidth: 2,
+          fill: false,
+          tension: 0.3,
+          borderColor: 'blue'
+        }
+      ]
+    };
 
-        socket.on('mqttMessage', ({ topic, payload }) => {
-            if (topic.includes('EnvQuery/Answer')) {
-                // Exemple : "Groupe1_24.55_50.10"
-                const parts = payload.split('_');
-                if (parts.length >= 3) {
-                    const temp = parseFloat(parts[1]);
-                    const humid = parseFloat(parts[2]);
-                    const now = new Date().toLocaleTimeString();
+    const tempChart = new Chart(ctx, {
+      type: 'line',
+      data: data,
+      options: {
+        scales: {
+          y: { beginAtZero: true }
+        }
+      }
+    });
 
-                    labels.push(now);
-                    data.datasets[0].data.push(temp);   // Température
-                    data.datasets[1].data.push(humid);  // Humidité
+    const socket = io();
 
-                    if (labels.length > 10) {
-                        labels.shift();
-                        data.datasets[0].data.shift();
-                        data.datasets[1].data.shift();
-                    }
+    socket.on('mqttMessage', ({ topic, payload }) => {
+      if (topic.includes('EnvQuery/Answer')) {
+        const parts = payload.split('_');
+        if (parts.length >= 3) {
+          const temp = parseFloat(parts[1]);
+          const humid = parseFloat(parts[2]);
+          const now = new Date().toLocaleTimeString();
 
-                    tempChart.update();
-                }
-            }
+          labels.push(now);
+          data.datasets[0].data.push(temp);
+          data.datasets[1].data.push(humid);
 
-            if (topic.includes('warnings')) {
-                const alertBox = document.getElementById('alerts');
-                alertBox.innerText = `⚠️ Alerte : ${payload}`;
-                const audio = new Audio('https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg');
-                audio.play();
-            }
-        });
-    </script>
+          if (labels.length > 10) {
+            labels.shift();
+            data.datasets[0].data.shift();
+            data.datasets[1].data.shift();
+          }
 
+          tempChart.update();
+        }
+      }
+
+      if (topic.includes('warnings')) {
+        const alertBox = document.getElementById('alerts');
+        alertBox.innerText = `⚠️ Alerte : ${payload}`;
+        const audio = new Audio('https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg');
+        audio.play();
+      }
+    });
+
+    // Formulaire de saisie manuelle
+    document.getElementById('manualForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+
+      const temp = parseFloat(document.getElementById('manualTemp').value);
+      const humid = parseFloat(document.getElementById('manualHumid').value);
+      const groupName = 'Groupe1';
+      const payload = `${groupName}_${temp.toFixed(2)}_${humid.toFixed(2)}`;
+      const now = new Date().toLocaleTimeString();
+
+      // Envoi au serveur
+      socket.emit('manualEntry', payload);
+
+      // Mise à jour immédiate du graphique
+      labels.push(now);
+      data.datasets[0].data.push(temp);
+      data.datasets[1].data.push(humid);
+
+      if (labels.length > 10) {
+        labels.shift();
+        data.datasets[0].data.shift();
+        data.datasets[1].data.shift();
+      }
+
+      tempChart.update();
+      e.target.reset();
+    });
+  </script>
 </body>
-
 </html>
